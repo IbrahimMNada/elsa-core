@@ -67,6 +67,7 @@ using Proto.Persistence.SqlServer;
 using Proto.Remote;
 using Proto.Remote.GrpcNet;
 using StackExchange.Redis;
+using Elsa.Activities.Command.Extensions;
 
 // ReSharper disable RedundantAssignment
 const PersistenceProvider persistenceProvider = PersistenceProvider.EntityFrameworkCore;
@@ -116,6 +117,8 @@ TypeAliasRegistry.RegisterAlias("OrderReceivedConsumerFactory", typeof(GenericCo
 services
     .AddElsa(elsa =>
     {
+
+ 
         if (persistenceProvider == PersistenceProvider.MongoDb)
             elsa.UseMongoDb(mongoDbConnectionString);
 
@@ -173,6 +176,7 @@ services
         elsa
             .AddActivitiesFrom<Program>()
             .AddWorkflowsFrom<Program>()
+            .AddCommandActivities()
             .UseFluentStorageProvider()
             .UseFileStorage()
             .UseIdentity(identity =>
