@@ -68,6 +68,10 @@ using Proto.Remote;
 using Proto.Remote.GrpcNet;
 using StackExchange.Redis;
 using Elsa.Activities.Command.Extensions;
+using Elsa.Activities.Command.Contracts;
+using Elsa.Mediator.Contracts;
+using Elsa.Mediator.Models;
+using Elsa.Activities.Command.Providers;
 
 // ReSharper disable RedundantAssignment
 const PersistenceProvider persistenceProvider = PersistenceProvider.EntityFrameworkCore;
@@ -118,7 +122,7 @@ services
     .AddElsa(elsa =>
     {
 
- 
+
         if (persistenceProvider == PersistenceProvider.MongoDb)
             elsa.UseMongoDb(mongoDbConnectionString);
 
@@ -169,14 +173,14 @@ services
             {
                 jobStorage = new MemoryStorage();
             }
-            
+
             elsa.UseHangfire(hangfire => hangfire.UseJobStorage(jobStorage));
         }
 
         elsa
             .AddActivitiesFrom<Program>()
             .AddWorkflowsFrom<Program>()
-            .AddCommandActivities()
+            .AddCommandActivities(services)
             .UseFluentStorageProvider()
             .UseFileStorage()
             .UseIdentity(identity =>
@@ -373,7 +377,7 @@ services
                     // Make sure to configure the path to the python DLL. E.g. /opt/homebrew/Cellar/python@3.11/3.11.6_1/Frameworks/Python.framework/Versions/3.11/bin/python3.11
                     // alternatively, you can set the PYTHONNET_PYDLL environment variable.
                     configuration.GetSection("Scripting:Python").Bind(options);
-                    
+
                     options.AddScript(sb =>
                     {
                         sb.AppendLine("def greet():");
@@ -463,7 +467,7 @@ services
                         bus.PrefetchCount = 50;
                         bus.Durable = true;
                         bus.AutoDelete = false;
-                        bus.ConcurrentMessageLimit = 32;
+                        bus.ConcurrentMessageLimit = 16;
                         // etc.
                     });
                 }
@@ -562,7 +566,7 @@ services
                 .UseSecretsScripting()
                 ;
         }
-        
+
         elsa.UseRetention(r =>
         {
             r.SweepInterval = TimeSpan.FromHours(5);
@@ -630,11 +634,12 @@ services
         elsa.AddSwagger();
         elsa.AddFastEndpointsAssembly<Program>();
         ConfigureForTest?.Invoke(elsa);
+
     });
 
 // Obfuscate HTTP request headers.
 services.AddActivityStateFilter<HttpRequestAuthenticationHeaderFilter>();
-
+builder.Services.AddCommandHandlersFrom<CreateOrderCommandHandler>();
 // Optionally configure recurring tasks using alternative schedules.
 services.Configure<RecurringTaskOptions>(options =>
 {

@@ -19,12 +19,6 @@ namespace Elsa.Activities.Command.Activities
     [Activity("Elsa", "Primitives", "Execute command in the code base.", DisplayName = "Command Activity")]
     public class CommandActivity : Activity
     {
-
-        public CommandActivity()
-        {
-
-        }
-
         private IMediator _mediator;
 
         [Input(UIHandler = typeof(WorkflowCommandProvider), UIHint = InputUIHints.DropDown, Description = "Command to be executed")]

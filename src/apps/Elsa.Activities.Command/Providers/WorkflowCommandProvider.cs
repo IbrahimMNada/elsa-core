@@ -6,10 +6,30 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Elsa.Activities.Command.Contracts;
+using Elsa.Mediator.Contracts;
+using Elsa.Mediator.Models;
 using Elsa.Workflows.UIHints.Dropdown;
 
 namespace Elsa.Activities.Command.Providers;
-internal class WorkflowCommandProvider : DropDownOptionsProviderBase
+
+
+public class CreateOrderCommand : IWorkFlowCommand
+{
+    public string CustomerName { get; set; }
+    public DateTime OrderDate { get; set; }
+}
+
+public class CreateOrderCommandHandler : ICommandHandler<CreateOrderCommand>
+{
+    public async Task<Unit> HandleAsync(CreateOrderCommand command, CancellationToken cancellationToken)
+    {
+
+
+        return new Unit();
+    }
+}
+
+public class WorkflowCommandProvider : DropDownOptionsProviderBase
 {
     protected override ValueTask<ICollection<SelectListItem>> GetItemsAsync(PropertyInfo propertyInfo, object? context, CancellationToken cancellationToken)
     {
