@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using Elsa.Common;
 using Elsa.Common.DistributedHosting;
 using Elsa.Common.Features;
 using Elsa.Common.RecurringTasks;
@@ -23,6 +24,7 @@ using Elsa.Workflows.Runtime.UIHints;
 using Medallion.Threading;
 using Medallion.Threading.FileSystem;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Elsa.Workflows.Runtime.Features;
 
@@ -252,7 +254,11 @@ public class WorkflowRuntimeFeature(IModule module) : FeatureBase(module)
 
         // Graceful-shutdown core (US1 — quiescence machinery).
         Services
-            .AddSingleton<IQuiescenceSignal, Elsa.Workflows.Runtime.Services.QuiescenceSignal>()
+            .AddSingleton<IQuiescenceSignal>(sp => new Elsa.Workflows.Runtime.Services.QuiescenceSignal(
+                sp.GetRequiredService<IOptions<GracefulShutdownOptions>>(),
+                sp.GetRequiredService<ISystemClock>(),
+                sp.GetRequiredService<IExecutionCycleRegistry>(),
+                sp.GetRequiredService<IServiceScopeFactory>()))
             .AddSingleton<IIngressSourceRegistry, Elsa.Workflows.Runtime.Services.IngressSourceRegistry>()
             .AddSingleton<IExecutionCycleRegistry, Elsa.Workflows.Runtime.Services.ExecutionCycleRegistry>()
             // Lazy collection breaks the otherwise-circular DI chain QuiescenceSignal → IExecutionCycleRegistry →

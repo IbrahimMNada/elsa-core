@@ -165,7 +165,7 @@ public class WorkflowRuntimeFeature : IShellFeature
                 sp.GetRequiredService<IOptions<GracefulShutdownOptions>>(),
                 sp.GetRequiredService<ISystemClock>(),
                 sp.GetRequiredService<IExecutionCycleRegistry>(),
-                sp.GetService<KeyValues.Contracts.IKeyValueStore>(),
+                sp.GetRequiredService<IServiceScopeFactory>(),
                 shellName: sp.GetService<CShells.ShellSettings>()?.Id))
             .AddSingleton<IIngressSourceRegistry, IngressSourceRegistry>()
             .AddSingleton<IExecutionCycleRegistry, ExecutionCycleRegistry>()

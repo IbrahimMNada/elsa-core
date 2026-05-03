@@ -3,6 +3,7 @@ using Elsa.KeyValues.Contracts;
 using Elsa.KeyValues.Entities;
 using Elsa.KeyValues.Models;
 using Elsa.Workflows.Runtime.Options;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Elsa.Workflows.Runtime.Services;
@@ -23,6 +24,7 @@ public sealed class QuiescenceSignal : IQuiescenceSignal
     private readonly IOptions<GracefulShutdownOptions> _options;
     private readonly ISystemClock _clock;
     private readonly IKeyValueStore? _keyValueStore;
+    private readonly IServiceScopeFactory? _serviceScopeFactory;
     private readonly IExecutionCycleRegistry _cycleRegistry;
     private readonly string _persistenceKey;
 
@@ -33,18 +35,51 @@ public sealed class QuiescenceSignal : IQuiescenceSignal
     /// down and rebuilt (shell reactivation or host restart), a fresh id is minted, which is what scopes recovery
     /// in <c>RecoverInterruptedWorkflowsStartupTask</c>.
     /// </summary>
+    [ActivatorUtilitiesConstructor]
     public QuiescenceSignal(
+        IOptions<GracefulShutdownOptions> options,
+        ISystemClock clock,
+        IExecutionCycleRegistry cycleRegistry,
+        IServiceScopeFactory serviceScopeFactory,
+        string? shellName = null,
+        string? generationId = null) : this(options, clock, cycleRegistry, keyValueStore: null, serviceScopeFactory, shellName, generationId)
+    {
+    }
+
+    public QuiescenceSignal(
+        IOptions<GracefulShutdownOptions> options,
+        ISystemClock clock,
+        IExecutionCycleRegistry cycleRegistry,
+        string? shellName = null,
+        string? generationId = null) : this(options, clock, cycleRegistry, keyValueStore: null, serviceScopeFactory: null, shellName, generationId)
+    {
+    }
+
+    /// <summary>
+    /// Creates the signal with a fixed key-value store. Intended for tests and non-container usage.
+    /// </summary>
+    public static QuiescenceSignal Create(
         IOptions<GracefulShutdownOptions> options,
         ISystemClock clock,
         IExecutionCycleRegistry cycleRegistry,
         IKeyValueStore? keyValueStore = null,
         string? shellName = null,
-        string? generationId = null)
+        string? generationId = null) => new(options, clock, cycleRegistry, keyValueStore, serviceScopeFactory: null, shellName, generationId);
+
+    private QuiescenceSignal(
+        IOptions<GracefulShutdownOptions> options,
+        ISystemClock clock,
+        IExecutionCycleRegistry cycleRegistry,
+        IKeyValueStore? keyValueStore,
+        IServiceScopeFactory? serviceScopeFactory,
+        string? shellName,
+        string? generationId)
     {
         _options = options;
         _clock = clock;
         _cycleRegistry = cycleRegistry;
         _keyValueStore = keyValueStore;
+        _serviceScopeFactory = serviceScopeFactory;
         _persistenceKey = PersistenceKeyPrefix + (shellName ?? "default");
         _state = QuiescenceState.Initial(generationId ?? Guid.NewGuid().ToString("N"));
     }
@@ -73,9 +108,8 @@ public sealed class QuiescenceSignal : IQuiescenceSignal
     public async ValueTask InitializePersistedStateAsync(CancellationToken cancellationToken)
     {
         if (_options.Value.PausePersistence != PausePersistencePolicy.AcrossReactivations) return;
-        if (_keyValueStore is null) return;
 
-        var pair = await _keyValueStore.FindAsync(new KeyValueFilter { Key = _persistenceKey }, cancellationToken);
+        var pair = await UseKeyValueStoreAsync(store => store.FindAsync(new KeyValueFilter { Key = _persistenceKey }, cancellationToken), defaultValue: (SerializedKeyValuePair?)null);
         if (pair is null) return;
 
         lock (_sync)
@@ -188,7 +222,7 @@ public sealed class QuiescenceSignal : IQuiescenceSignal
     /// </remarks>
     private async ValueTask PersistAsync()
     {
-        if (_options.Value.PausePersistence != PausePersistencePolicy.AcrossReactivations || _keyValueStore is null)
+        if (_options.Value.PausePersistence != PausePersistencePolicy.AcrossReactivations)
             return;
 
         await _persistenceMutex.WaitAsync(CancellationToken.None);
@@ -196,13 +230,44 @@ public sealed class QuiescenceSignal : IQuiescenceSignal
         {
             var live = Volatile.Read(ref _state);
             if ((live.Reason & QuiescenceReason.AdministrativePause) != 0)
-                await _keyValueStore.SaveAsync(new SerializedKeyValuePair { Key = _persistenceKey, SerializedValue = live.PauseReasonText ?? string.Empty }, CancellationToken.None);
+                await UseKeyValueStoreAsync(store => store.SaveAsync(new SerializedKeyValuePair { Key = _persistenceKey, SerializedValue = live.PauseReasonText ?? string.Empty }, CancellationToken.None));
             else
-                await _keyValueStore.DeleteAsync(_persistenceKey, CancellationToken.None);
+                await UseKeyValueStoreAsync(store => store.DeleteAsync(_persistenceKey, CancellationToken.None));
         }
         finally
         {
             _persistenceMutex.Release();
         }
+    }
+
+    private async ValueTask<TResult> UseKeyValueStoreAsync<TResult>(Func<IKeyValueStore, Task<TResult>> action, TResult defaultValue)
+    {
+        if (_keyValueStore is not null)
+            return await action(_keyValueStore);
+
+        if (_serviceScopeFactory is null)
+            return defaultValue;
+
+        using var scope = _serviceScopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetService<IKeyValueStore>();
+
+        return store is null ? defaultValue : await action(store);
+    }
+
+    private async ValueTask UseKeyValueStoreAsync(Func<IKeyValueStore, Task> action)
+    {
+        if (_keyValueStore is not null)
+        {
+            await action(_keyValueStore);
+            return;
+        }
+
+        if (_serviceScopeFactory is null)
+            return;
+
+        using var scope = _serviceScopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetService<IKeyValueStore>();
+        if (store is not null)
+            await action(store);
     }
 }

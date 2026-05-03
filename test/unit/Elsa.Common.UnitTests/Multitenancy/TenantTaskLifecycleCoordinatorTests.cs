@@ -52,6 +52,17 @@ public class TenantTaskLifecycleCoordinatorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ActivateAndDeactivateAsync_WithNullTenantId_TreatsTenantAsDefaultTenant()
+    {
+        var tenant = new Tenant { Id = null! };
+
+        await ActivateAsync(tenant);
+        await _coordinator.DeactivateTenantAsync(DeactivationArgs(tenant));
+
+        Assert.True(_recurringTask.WasStopCalled);
+    }
+
+    [Fact]
     public async Task DisposeAsync_WithActiveTenant_StopsRecurringTasks()
     {
         await ActivateAsync();
@@ -61,11 +72,17 @@ public class TenantTaskLifecycleCoordinatorTests : IAsyncDisposable
 
     // === Instance helpers ===
 
-    private Task ActivateAsync() =>
-        _coordinator.ActivateTenantAsync(new TenantActivatedEventArgs(_tenant, CreateTenantScope(_tenant, _serviceProvider), CancellationToken.None));
+    private Task ActivateAsync(Tenant? tenant = null)
+    {
+        tenant ??= _tenant;
+        return _coordinator.ActivateTenantAsync(new TenantActivatedEventArgs(tenant, CreateTenantScope(tenant, _serviceProvider), CancellationToken.None));
+    }
 
     private TenantDeactivatedEventArgs DeactivationArgs(CancellationToken cancellationToken = default) =>
-        new(_tenant, CreateTenantScope(_tenant, _serviceProvider), cancellationToken);
+        DeactivationArgs(_tenant, cancellationToken);
+
+    private TenantDeactivatedEventArgs DeactivationArgs(Tenant tenant, CancellationToken cancellationToken = default) =>
+        new(tenant, CreateTenantScope(tenant, _serviceProvider), cancellationToken);
 
     // === Static helpers ===
 

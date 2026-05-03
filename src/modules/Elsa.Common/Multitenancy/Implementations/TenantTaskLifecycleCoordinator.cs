@@ -282,7 +282,7 @@ public class TenantTaskLifecycleCoordinator(RecurringTaskScheduleManager schedul
         state.CancellationTokenSource = null;
     }
 
-    private static string GetTenantId(Tenant tenant) => tenant.Id;
+    private static string GetTenantId(Tenant tenant) => tenant.Id.NormalizeTenantId();
 
     private class TenantRuntimeState
     {

@@ -4,6 +4,7 @@ using Elsa.KeyValues.Entities;
 using Elsa.KeyValues.Models;
 using Elsa.Workflows.Runtime.Options;
 using Elsa.Workflows.Runtime.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 
@@ -27,7 +28,7 @@ public class QuiescenceSignalPersistenceTests
     public async Task SessionScopedIgnoresKey()
     {
         _kv.Pairs["elsa.quiescence.pause.default"] = new SerializedKeyValuePair { Key = "elsa.quiescence.pause.default", SerializedValue = "prior" };
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.SessionScoped }), _clock, _cycleRegistry, _kv);
+        var sut = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.SessionScoped }), _clock, _cycleRegistry, _kv);
 
         await sut.InitializePersistedStateAsync(CancellationToken.None);
 
@@ -38,7 +39,7 @@ public class QuiescenceSignalPersistenceTests
     public async Task AcrossReactivationsRestoresPause()
     {
         _kv.Pairs["elsa.quiescence.pause.default"] = new SerializedKeyValuePair { Key = "elsa.quiescence.pause.default", SerializedValue = "maintenance" };
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
+        var sut = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
 
         await sut.InitializePersistedStateAsync(CancellationToken.None);
 
@@ -49,7 +50,7 @@ public class QuiescenceSignalPersistenceTests
     [Fact(DisplayName = "Pause writes the persisted key when policy is AcrossReactivations")]
     public async Task PauseWritesKey()
     {
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
+        var sut = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
 
         await sut.PauseAsync("migration", "op@ex.com", CancellationToken.None);
 
@@ -60,7 +61,7 @@ public class QuiescenceSignalPersistenceTests
     [Fact(DisplayName = "Resume clears the persisted key when policy is AcrossReactivations")]
     public async Task ResumeClearsKey()
     {
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
+        var sut = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
         await sut.PauseAsync("migration", "op@ex.com", CancellationToken.None);
 
         await sut.ResumeAsync("op@ex.com", CancellationToken.None);
@@ -75,8 +76,8 @@ public class QuiescenceSignalPersistenceTests
         // deployment shared "elsa.quiescence.pause.default" — pausing shell A would re-pause shell B on next
         // activation. The factory in ShellFeatures/WorkflowRuntimeFeature now injects ShellSettings.Id; this
         // test locks in the constructor-level contract that shellName is reflected in the persistence key.
-        var sutA = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv, shellName: "shell-a");
-        var sutB = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv, shellName: "shell-b");
+        var sutA = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv, shellName: "shell-a");
+        var sutB = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv, shellName: "shell-b");
 
         await sutA.PauseAsync("migration-a", "op@ex.com", CancellationToken.None);
         await sutB.PauseAsync("migration-b", "op@ex.com", CancellationToken.None);
@@ -97,7 +98,7 @@ public class QuiescenceSignalPersistenceTests
         // paused state the operator had already cancelled. The fix serializes persistence on a dedicated semaphore
         // and re-reads live state inside it, so each I/O writes the most recent in-memory transition.
         var gatedStore = new GatedFakeKeyValueStore();
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, gatedStore);
+        var sut = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, gatedStore);
 
         var pauseTask = sut.PauseAsync("migration", "op@ex.com", CancellationToken.None).AsTask();
         await gatedStore.SaveStarted.Task; // Pause has won the persistence mutex; its SaveAsync is in flight (blocked).
@@ -125,7 +126,7 @@ public class QuiescenceSignalPersistenceTests
         // AdministrativePause set in memory with no persisted record. The idempotent fast-path on subsequent
         // PauseAsync calls (transitioned == false) meant no retry; on the next host restart the runtime came
         // back unpaused, defeating PausePersistencePolicy.AcrossReactivations.
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
+        var sut = QuiescenceSignal.Create(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, _kv);
         var cancelled = new CancellationToken(canceled: true);
 
         var state = await sut.PauseAsync("migration", "op@ex.com", cancelled);
@@ -138,7 +139,7 @@ public class QuiescenceSignalPersistenceTests
     [Fact(DisplayName = "Null key-value store is tolerated under AcrossReactivations")]
     public async Task NullKeyValueStoreTolerated()
     {
-        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry, keyValueStore: null);
+        var sut = new QuiescenceSignal(Microsoft.Extensions.Options.Options.Create(new GracefulShutdownOptions { PausePersistence = PausePersistencePolicy.AcrossReactivations }), _clock, _cycleRegistry);
 
         await sut.InitializePersistedStateAsync(CancellationToken.None);
         await sut.PauseAsync("migration", null, CancellationToken.None);
@@ -146,6 +147,25 @@ public class QuiescenceSignalPersistenceTests
 
         // Should complete without throwing.
         Assert.Equal(QuiescenceReason.None, sut.CurrentState.Reason);
+    }
+
+    [Fact(DisplayName = "DI construction tolerates scoped key-value store")]
+    public async Task DiConstructionToleratesScopedKeyValueStore()
+    {
+        var services = new ServiceCollection();
+        services.AddOptions<GracefulShutdownOptions>().Configure(options => options.PausePersistence = PausePersistencePolicy.AcrossReactivations);
+        services.AddSingleton(_clock);
+        services.AddSingleton(_cycleRegistry);
+        services.AddScoped<IKeyValueStore>(_ => _kv);
+        services.AddSingleton<IQuiescenceSignal, QuiescenceSignal>();
+
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        var sut = provider.GetRequiredService<IQuiescenceSignal>();
+
+        await sut.PauseAsync("migration", "op@ex.com", CancellationToken.None);
+
+        Assert.True(_kv.Pairs.TryGetValue("elsa.quiescence.pause.default", out var pair));
+        Assert.Equal("migration", pair.SerializedValue);
     }
 
     private sealed class FakeKeyValueStore : IKeyValueStore
