@@ -1,0 +1,75 @@
+# AGENTS.md
+
+Guidance for AI coding agents working in this repository.
+
+## Project Overview
+
+- Elsa Core is a .NET solution centered on `Elsa.sln`.
+- Production code lives under `src/`.
+- Tests live under `test/`, grouped by `unit`, `integration`, `component`, and `performance`.
+- Build automation is implemented with NUKE in `build/Build.cs` and exposed through `build.sh`, `build.ps1`, and `build.cmd`.
+
+## Working Rules
+
+- Keep changes focused on the requested task. Do not mix unrelated cleanup, formatting, or dependency updates into functional changes.
+- Preserve existing public APIs unless the task explicitly requires an API change.
+- Update tests when behavior changes and add tests for new behavior where practical.
+- Update documentation when changing externally visible behavior, configuration, APIs, or developer workflows.
+- Do not delete generated-looking, artifact, or IDE files unless the task explicitly asks for cleanup.
+- If the worktree contains unrelated user changes, leave them untouched.
+
+## Build And Test Commands
+
+- Build the default target: `./build.sh`
+- Run NUKE test target: `./build.sh Test`
+- Build with dotnet directly: `dotnet build Elsa.sln`
+- Run all tests directly: `dotnet test Elsa.sln`
+- Run a specific test project: `dotnet test test/unit/Elsa.Workflows.Core.UnitTests/Elsa.Workflows.Core.UnitTests.csproj`
+- Run ElsaScript DSL integration tests: `./run-dsl-tests.sh`
+
+Prefer targeted `dotnet test <project>` commands while iterating, then run a broader build or test command when the change affects shared infrastructure or cross-module behavior.
+
+## Code Style
+
+- C# uses `LangVersion` `latest`, nullable reference types, and implicit usings from `Directory.Build.props`.
+- Projects under `src/` target `net8.0`, `net9.0`, and `net10.0` through `src/Directory.Build.props`.
+- Follow `.editorconfig`: 4-space indentation for C#, file-scoped namespaces, braces required, `var` preferred, usings outside namespaces, and sorted system directives.
+- Prefer clear domain names over abbreviations. Keep types small and responsibilities explicit.
+- Avoid suppressing warnings unless compatibility or framework constraints make the warning unavoidable; explain the reason near the suppression.
+
+## Repository Structure
+
+- `src/apps/`: runnable app hosts and sample packages.
+- `src/clients/`: client libraries.
+- `src/common/`: shared infrastructure and testing support.
+- `src/extensions/`: extension packages.
+- `src/modules/`: Elsa modules and feature packages.
+- `test/unit/`: unit tests.
+- `test/integration/`: integration tests.
+- `test/component/`: component tests.
+- `test/performance/`: performance tests.
+- `build/`: NUKE build project.
+- `doc/`, `design/`, and `specs/`: documentation, design assets, and feature specifications.
+
+## Testing Guidance
+
+- Place tests near the relevant existing test project rather than creating a new project by default.
+- Use the existing shared testing helpers under `src/common/Elsa.Testing.Shared*` when they fit the scenario.
+- For regressions, add a failing test that demonstrates the bug before or alongside the fix.
+- For multi-targeting issues, consider whether the test must run against all target frameworks or only the affected one.
+
+## Dependency And Package Guidance
+
+- Central package versions are managed in `Directory.Packages.props`; do not add ad hoc versions to individual project files unless the repository already uses that pattern for the package.
+- Keep target framework changes centralized in `src/Directory.Build.props` unless a project has a specific reason to differ.
+- Be cautious with package upgrades because this repository targets multiple frameworks and modules.
+
+## Review Checklist
+
+Before handing off changes, verify the following when applicable:
+
+- The project or solution builds.
+- Relevant unit or integration tests pass.
+- Public API or behavior changes are documented.
+- New code follows nullable annotations and existing style.
+- No unrelated files were changed.
