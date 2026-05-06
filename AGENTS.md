@@ -18,6 +18,13 @@ Guidance for AI coding agents working in this repository.
 - Do not delete generated-looking, artifact, or IDE files unless the task explicitly asks for cleanup.
 - If the worktree contains unrelated user changes, leave them untouched.
 
+## Agent Operating Principles
+
+- Do not assume, hide confusion, or flatten uncertainty; surface questions, constraints, and tradeoffs explicitly.
+- Write the minimum code that solves the defined problem; do not add speculative abstractions, features, or cleanup.
+- Touch only the files and behavior required for the task; clean up only issues introduced by your own changes.
+- Define success criteria before implementation, then iterate until the criteria are verified or clearly state what could not be verified.
+
 ## Build And Test Commands
 
 - Build the default target: `./build.sh`
